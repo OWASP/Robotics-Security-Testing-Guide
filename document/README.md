@@ -32,6 +32,7 @@
   - 3.2.3 Certificate Authority Chain-of-Trust Validation
   - 3.2.4 Network Segmentation and Safety Conduit Isolation
   - 3.2.5 Tamper Logging and Component Integrity Verification
+  - 3.2.6 Wireless Provisioning and Onboarding (BLE, Wi-Fi, Pairing)
 
 ### 3.3 Robotics Middleware and IPC
   - 3.3.1 ROS 1 Framework
@@ -63,6 +64,13 @@
   - 3.7.1 Safety Controllers (Safety PLC)
   - 3.7.2 Actuator and Cobot Limits (Speed, Force, Torque)
   - 3.7.3 Runtime Invariants and Safety-Security Conflict Auditing
+
+### 3.8 Command Authority and Arbitration
+  - 3.8.1 Command Source Inventory (AI Planner, Teleoperation, Teach Pendant, Fleet API, Scripts)
+  - 3.8.2 Teleoperation Channel Security (Session Hijacking, Command Replay, Operator Feed Spoofing)
+  - 3.8.3 Authority Arbitration and Conflicting Commands (AI vs. Human, Operator vs. Operator)
+  - 3.8.4 Authority Handover and Link-Loss Fail-Safe Behavior
+  - 3.8.5 Authority Escalation Across Command Sources
 
 ## 4. Planned for v1.1 and Later
   - 4.1 Hardware and Firmware: Internal Buses, Physical Interfaces, Bootloader and Updates
