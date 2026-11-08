@@ -56,7 +56,7 @@
 - 3.6.2 Multimodal Jailbreaking and Adversarial Inputs
 - 3.6.3 VLA Data Poisoning and Environmental Triggers
 - 3.6.4 Temporal Action-Chunk Backdoor Testing
-- 3.6.5 LLM-to-Middleware Structured Backdoors and Runtime Guardrail Verification
+- 3.6.5 Unvalidated Model-to-Action Output
 
 ### 3.7 Functional Safety and Actuation (`RSTG-SAFE`)
 - 3.7.1 Safety Controllers and Safety PLCs
