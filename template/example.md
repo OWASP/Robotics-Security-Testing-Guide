@@ -28,7 +28,7 @@ A brief description (1-2 paragraphs) of what this test evaluates, the vulnerabil
 
 ## How to Test
 
-### Safe Verification (Indicators of Vulnerability):**
+### Safe Verification (Indicators of Vulnerability):
 
 Read this BEFORE executing exploits. Explain how the tester can confirm the exploit was successful *without* triggering a dangerous physical response. (e.g., "Start monitoring the `/cmd_vel` ROS topic for state changes, or look for specific error codes in `syslog`, rather than allowing the robot to physically move").
 
