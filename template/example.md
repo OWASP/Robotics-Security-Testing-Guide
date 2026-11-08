@@ -46,7 +46,8 @@ Reviewing source code, configuration files (e.g., ROS `launch` files or `permiss
   
 ## Remediation
 
-Methods to patch or mitigate the vulnerability (e.g., code-level fixes, communication encryption, firewall configurations, or physical hardware isolation).
+- **Vendor / Developer:** Actions required by the manufacturer or software team (e.g., source code fixes, implementing middleware encryption, hardware design changes, or issuing security patches).
+- **Operator / Integrator:** Actions required by the end-user, facility owner, or deployment team (e.g., OT/IT network segmentation, firewall configuration, physical access restrictions, or VPN implementation).
 
 ## Related Test Cases
 
