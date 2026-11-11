@@ -11,11 +11,7 @@ Robots driven by an LLM planner convert model output into motion commands. The p
 This test evaluates whether the enforcement chain between the model and the actuators (bridge validation, middleware safeguards, controller limits, and safety-rated functions) keeps the robot within its defined limits and brings it to its defined safe state when model output is invalid or the bridge fails. The primary finding is a failure of the **complete chain**: a prohibited or out-of-limit action is executed, or the robot does not reach its safe state within its stopping requirement. A bridge that forwards model output without validation, while a downstream layer still enforces the limits, is reported separately as a defense-in-depth weakness, not as an exploitable failure.
 
 > [!CAUTION]
-> **KINETIC RISK:** Successful exploitation produces unintended robot motion. Separate testing into two modes:
-> - **Motion-disabled testing:** simulation, or hardware where motion is physically impossible (drive or motor power removed, wheels off the ground, arm unable to reach anything). Use this mode for all exploratory and out-of-limit tests.
-> - **Controlled-motion testing:** only to confirm specific findings on hardware, after the target's safe state and stopping requirements are defined. Use the robot's reduced-speed or collaborative mode where available, clear the workspace of people, and keep a hardware E-stop within reach of a dedicated safety observer. Reduced-speed modes limit motion; they do not prevent it.
->
-> Monitoring a topic observes commands; it does not prevent motion.
+> **KINETIC RISK:** Exploitation produces unintended physical robot motion. Follow Section 2.3 (Rules of Engagement and Kinetic Containment) before conducting active tests on hardware.
 
 > [!NOTE]
 > **Important Note:** This test covers LLM planners that act through tool calls. Vision-Language-Action (VLA) models that emit action values directly (action chunks, normalized joint or end-effector targets) require a different procedure and are out of scope for this test case. Whether the model can disable, reconfigure, or route around the enforcement layer itself (e.g., by changing limit parameters or publishing downstream of a filter) is also out of scope. Detecting poisoning or backdoors in the model itself is out of scope; this test treats output from a poisoned or backdoored model like any other untrusted output. Software safeguards such as navigation-stack velocity limits or collision monitors are not safety-rated functions; findings should state which layer (bridge, software safeguard, controller, or safety-rated function) stopped or failed to stop the action.
@@ -31,9 +27,9 @@ This test evaluates whether the enforcement chain between the model and the actu
 
 ## Hardware & Environment Requirements
 
-- **Physical Components:** Not required. Optional: a mobile base or manipulator with a hardware E-stop for controlled-motion confirmation.
-- **Testing Tools:** ROS 2 CLI (`ros2 topic`, `ros2 node`, `ros2 param`, `ros2 bag`); access to the bridge's tool-call interface (e.g., an MCP client or direct calls to the planner's tools); bridge and planner logs with timestamps.
-- **Simulation / Software:** ROS 2 with Gazebo (e.g., TurtleBot3 for a mobile base, or a simulated arm for joint limits) with access to the simulator's ground-truth pose; the target's LLM planner connected through its normal bridge (e.g., rosbridge plus a tool server, or a planner node).
+- **Physical Components:** Not required. Optional: a mobile base or manipulator with a hardware E-stop to confirm findings on hardware.
+- **Testing Tools:** [ROS 2 CLI](https://docs.ros.org/en/jazzy/Concepts/Basic/About-Command-Line-Tools.html) (`ros2 topic`, `ros2 node`, `ros2 param`, [`ros2 bag`](https://docs.ros.org/en/jazzy/Tutorials/Beginner-CLI-Tools/Recording-And-Playing-Back-Data/Recording-And-Playing-Back-Data.html)); access to the bridge's tool-call interface (e.g., an [MCP](https://modelcontextprotocol.io/) client or direct calls to the planner's tools); bridge and planner logs with timestamps.
+- **Simulation / Software:** [ROS 2](https://docs.ros.org/en/jazzy/) with [Gazebo](https://gazebosim.org/docs/harmonic/getstarted/) (e.g., [TurtleBot3](https://emanual.robotis.com/docs/en/platform/turtlebot3/simulation/) for a mobile base, or a simulated arm for joint limits) with access to the simulator's ground-truth pose; the target's LLM planner connected through its normal bridge (e.g., [rosbridge](https://github.com/RobotWebTools/rosbridge_suite) plus a tool server, or a planner node).
 
 ## How to Test
 
