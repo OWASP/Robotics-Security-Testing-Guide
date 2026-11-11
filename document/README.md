@@ -1,7 +1,7 @@
 # Table of Contents
 
 ## 1. Introduction
-- 1.1 Preface, Authors, and Contributors
+- 1.1 [About](1-Introduction/01-About.md)
 - 1.2 Objectives and Target Audience
 - 1.3 Scope and Non-Goals
 - 1.4 Relationship to Other Standards
@@ -56,7 +56,7 @@
 - 3.6.2 Multimodal Jailbreaking and Adversarial Inputs
 - 3.6.3 VLA Data Poisoning and Environmental Triggers
 - 3.6.4 Temporal Action-Chunk Backdoor Testing
-- 3.6.5 Unvalidated Model-to-Action Output
+- 3.6.5 [Unvalidated Model-to-Action Output](3-Robotics_Security_Testing/06-Embodied_AI_and_Autonomous_Planning/05-Unvalidated_Model_to_Action_Output.md)
 
 ### 3.7 Functional Safety and Actuation (`RSTG-SAFE`)
 - 3.7.1 Safety Controllers and Safety PLCs
