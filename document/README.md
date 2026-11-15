@@ -82,7 +82,7 @@
 - 3.8.1 Command Source Inventory
 - 3.8.2 Teleoperation Channel Security
 - 3.8.3 Authority Arbitration and Conflicting Commands
-- 3.8.4 Authority Handover and Link-Loss Fail-Safe Behavior
+- 3.8.4 [Authority Handover and Link-Loss Fail-Safe Behavior](3-Robotics_Security_Testing/08-Command_Authority_and_Arbitration/04-Authority_Handover_and_Link-Loss_Fail-Safe_Behavior.md)
 - 3.8.5 Authority Escalation Across Command Sources
 
 ## 4. Planned for v1.1 and Later
