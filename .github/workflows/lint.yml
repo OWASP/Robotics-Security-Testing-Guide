@@ -1,0 +1,49 @@
+# Markdown linting for the OWASP Robotics Security Testing Guide.
+#
+# Enforces the formatting rules that prevent real rendering and consistency
+# bugs (trailing spaces, heading/list/fence spacing) across every Markdown
+# file in the repository.
+#
+# Deliberately NOT filtered with `paths:` — a required status check that is
+# skipped by a path filter never reports, which leaves PRs blocked forever.
+# The job runs in well under a minute, so it always runs.
+name: Markdown Lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Least privilege: this job only reads the repository.
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # Cancel superseded PR runs, but let runs on main finish so they record a
+  # real status.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  markdownlint:
+    name: markdownlint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        # Pinned by commit SHA: a tag is mutable, and this is a security project.
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Rule set lives in .markdownlint.yaml; globs and ignores in
+      # .markdownlint-cli2.yaml.
+      #
+      # markdownlint-cli2 MERGES the globs passed here with the config's own
+      # `globs:` and applies the config's `ignores:`. The config is therefore
+      # what actually pulls in document/**: without it, the action's default
+      # glob (root-level *.md only) finds 2 files instead of 5. The glob is
+      # repeated here so the workflow stays correct if the config globs drift.
+      - name: Lint Markdown
+        uses: DavidAnson/markdownlint-cli2-action@913db5cf77ef624b914090bad9e1615f7f6e099d # v25.0.0
+        with:
+          globs: "**/*.{md,markdown}"

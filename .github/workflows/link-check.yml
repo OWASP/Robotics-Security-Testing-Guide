@@ -1,0 +1,72 @@
+# Broken-link checking for the OWASP Robotics Security Testing Guide.
+#
+# Runs on every pull request and push to main, and additionally on a weekly
+# schedule: links rot without anyone touching the repository, so a
+# commit-triggered-only check would never notice a URL that died last month.
+#
+# Checker behaviour is configured in lychee.toml (retries, accepted status
+# codes, exclusions, private-IP blocking, anchor checking).
+name: Link Check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Mondays at 06:00 UTC — surfaces link rot that no commit would catch.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # Cancel superseded PR runs, but let runs on main and the scheduled sweep
+  # finish so they record a real status.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  links:
+    name: lychee
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        # Pinned by commit SHA: a tag is mutable, and this is a security project.
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Restore link-check cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .lycheecache
+          # Keyed on content, not on the commit: an exact hit whenever the
+          # Markdown or the config is unchanged, and the prefix fallback keeps
+          # a warm cache across unrelated commits. (A per-SHA key would never
+          # hit except on a re-run of the same commit, and would grow one
+          # entry per push.)
+          key: lychee-${{ hashFiles('**/*.md', '**/*.markdown', 'lychee.toml') }}
+          restore-keys: |
+            lychee-
+
+      - name: Check links
+        uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
+        with:
+          # The config path is passed explicitly so it is visible in the run
+          # log. lychee already defaults to ./lychee.toml, and a missing or
+          # invalid config exits 3 rather than 0, so `fail: true` turns a
+          # config typo into a red build instead of a silent default run.
+          args: >-
+            --config lychee.toml
+            --no-progress
+            --verbose
+            '**/*.md'
+            '**/*.markdown'
+          # github.token works for fork PRs (no secrets access needed) and
+          # raises GitHub's API rate limit for github.com link checks. The
+          # action exports it as GITHUB_TOKEN for lychee, so no env: block is
+          # needed.
+          token: ${{ github.token }}
+          # Both are the action's defaults; stated explicitly to document intent.
+          fail: true
+          jobSummary: true
