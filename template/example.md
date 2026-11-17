@@ -1,5 +1,6 @@
 # Test Case Name
-*(e.g., ROS 2 Discovery Flooding & Amplification)*
+
+(e.g., ROS 2 Discovery Flooding & Amplification)
 
 |ID          |
 |------------|

@@ -17,7 +17,7 @@ Most existing security guides treat software, APIs, and AI models in digital iso
 
 ## Current Status & Roadmap
 
-The project is currently in **Phase 1 (R&D & Taxonomy Definition)**. 
+The project is currently in **Phase 1 (R&D & Taxonomy Definition)**.
 
 1. **Phase 1 (Current):** Researching robotic attack vectors, defining the guide's table of contents, and drafting the initial Robotics Top 10 risk categories.
 2. **Phase 2:** Writing the foundational testing scenarios for ROS/ROS2 architectures and cyber-physical translation.
@@ -25,7 +25,7 @@ The project is currently in **Phase 1 (R&D & Taxonomy Definition)**.
 
 ## Getting Involved
 
-We are actively looking for robotics engineers, hardware hackers, AI researchers, and pentesters to help review the initial taxonomy and draft testing scenarios. 
+We are actively looking for robotics engineers, hardware hackers, AI researchers, and pentesters to help review the initial taxonomy and draft testing scenarios.
 
 - **Project Leader:** [Meysam Bal-afkan](https://github.com/Galaxy-sc)
 - **Contributor Recognition:** All contributors to this project will be officially recognized and rewarded through the [OWASP Community Recognition Tool (OWASP-CRT)](https://crt.owasp.org).
