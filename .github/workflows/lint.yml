@@ -7,6 +7,13 @@
 # Deliberately NOT filtered with `paths:` — a required status check that is
 # skipped by a path filter never reports, which leaves PRs blocked forever.
 # The job runs in well under a minute, so it always runs.
+#
+# Unlike the link check, this job always lints the WHOLE repository, including
+# on pull requests. Linting has no time-dependent failure mode: the tool is
+# pinned by commit SHA and the ruleset is fixed, so a file that passes today
+# still passes next year. A red build therefore always means someone changed
+# something. Scanning everything also keeps the invariant that `main` is clean,
+# which is what makes the baseline trustworthy.
 name: Markdown Lint
 
 on:
