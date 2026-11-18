@@ -102,6 +102,10 @@ jobs:
             --files-from ${{ runner.temp }}/lychee-inputs.txt
           token: ${{ github.token }}
           fail: true
-          # A PR touching a Markdown file with zero links is valid, not a config error.
-          failIfEmpty: false
+          # Zero links is a configuration error only when the whole repository is
+          # scanned: it holds many, so an empty result there means the glob or the
+          # input list broke. A pull request, by contrast, often touches a single
+          # Markdown file that legitimately contains no links, and that must not
+          # fail the job. Keep the signal where it is meaningful.
+          failIfEmpty: ${{ github.event_name != 'pull_request' }}
           jobSummary: true
