@@ -1,0 +1,12 @@
+# markdownlint-cli2 configuration: which files to lint.
+#
+# Rules deliberately live in .markdownlint.yaml, NOT here. markdownlint-cli2
+# reads both files, and a .markdownlint.* file in the same directory takes
+# precedence over a `config:` block in this file — keeping rules in one place
+# avoids a silent precedence surprise.
+globs:
+  - "**/*.{md,markdown}"
+ignores:
+  # Verbatim CC BY-SA 4.0 legal text; reformatting it is not appropriate.
+  - "LICENSE.md"
+  - "node_modules/**"

@@ -1,0 +1,78 @@
+# markdownlint configuration for the OWASP Robotics Security Testing Guide
+# Rule reference: https://github.com/DavidAnson/markdownlint/blob/main/doc/Rules.md
+#
+# Philosophy: enforce the rules that prevent real rendering/consistency bugs
+# (trailing spaces, list and heading spacing, fence spacing), and switch off
+# the rules that fight the conventions this guide deliberately uses.
+# Every rule set to false below carries a stated reason.
+
+default: true
+
+# MD013 line-length — OFF.
+# The guide deliberately uses unwrapped prose paragraphs: 106 lines exceed 80
+# characters and 92 of those are plain prose (only 14 contain a URL or a table
+# pipe; the longest line is 880 characters). Long URLs are therefore not what
+# trips this rule — hard-wrapped prose is. A ceiling high enough to accommodate
+# that (1000+) would still reject a long paragraph, which is acceptable
+# formatting here, so the rule is off rather than tuned.
+# If this is ever revisited, a tuned ceiling is available:
+#   MD013: { line_length: 1000, tables: false, code_blocks: false }
+MD013: false
+
+# MD026 no-trailing-punctuation — OFF.
+# Headings such as "### Safe Verification (Indicators of Vulnerability):" are
+# the established house style in the test-case template.
+MD026: false
+
+# MD034 no-bare-urls — OFF.
+# Reference lists legitimately use bare URLs (CVE/RVD entries).
+MD034: false
+
+# MD028 no-blanks-blockquote — OFF.
+# GitHub alert blocks (> [!CAUTION] ... > [!NOTE]) REQUIRE a blank line between
+# two consecutive alerts to render as separate boxes. MD028 reports that blank
+# line as an error, so the two are structurally incompatible.
+MD028: false
+
+# MD033 inline-html — allow the elements contributors legitimately need.
+MD033:
+  allowed_elements:
+    - a
+    - br
+    - details
+    - summary
+    - img
+    - kbd
+    - sub
+    - sup
+    - p
+    - div
+    - table
+    - tr
+    - td
+    - th
+
+# MD024 duplicate-heading — allow repeats under different parents.
+# Test cases legitimately reuse "Summary", "Remediation", "References".
+MD024:
+  siblings_only: true
+
+# Keep list and fence style consistent across the guide.
+MD007:
+  indent: 2
+MD046:
+  style: fenced
+MD048:
+  style: backtick
+# MD060 table-column-style — OFF, deliberately.
+# This is a cosmetic rule added in markdownlint 0.40. The guide's tables mix
+# compact and padded pipe spacing, and the rule also flags internal
+# inconsistency within a single table (10 hits today). Table pipe spacing is
+# not one of the formatting problems this pipeline exists to prevent, and
+# enforcing it would churn tables across every existing test case.
+# To adopt it later: run `markdownlint-cli2 --fix`, then set
+#   MD060: { style: compact }
+# NOTE: a *misspelled* style value is silently ignored by markdownlint and
+# disables the rule without warning, so an invalid value here would look like
+# a passing config. Valid values are: any, aligned, compact, tight.
+MD060: false

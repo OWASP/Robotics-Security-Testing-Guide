@@ -1,0 +1,116 @@
+# Broken-link checking for the OWASP Robotics Security Testing Guide.
+#
+# Scope is deliberately different per trigger, so that a link which rots on its
+# own can never fail an unrelated contribution:
+#
+#   pull_request  -> only the Markdown files the PR actually changed
+#   push to main  -> the whole repository (the post-merge source of truth)
+#   schedule      -> the whole repository (catches rot with no commits at all)
+#   manual        -> the whole repository
+#
+# Checker behaviour is configured in lychee.toml (retries, accepted status
+# codes, exclusions, private-IP blocking, anchor checking).
+name: Link Check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Monthly, on the 1st at 06:00 UTC. Technical references do not rot fast
+    # enough to justify a weekly cadence, and a quieter schedule avoids alert
+    # fatigue. Note that lychee's cache defaults to a 1-day max age, so a
+    # monthly run always re-checks every link rather than trusting the cache.
+    - cron: "0 6 1 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # Cancel superseded PR runs, but let runs on main and the scheduled sweep
+  # finish so they record a real status.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  links:
+    name: lychee
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        # Pinned by commit SHA: a tag is mutable, and this is a security project.
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Full history so the PR diff can be taken against the merge base.
+          fetch-depth: 0
+
+      # Writes the inputs lychee should check into a file, which is then handed
+      # to lychee via --files-from. The file list is NEVER interpolated into a
+      # shell command: lychee-action `eval`s its `args` string, so splicing
+      # PR-controlled file names into it would be a command-injection vector.
+      # --files-from takes one path per line and is immune to quoting issues.
+      - name: Select files to check
+        id: select
+        run: |
+          set -euo pipefail
+          list="${RUNNER_TEMP}/lychee-inputs.txt"
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="${{ github.event.pull_request.base.sha }}"
+            # Only added/copied/modified/renamed files: a deleted file has no
+            # links left to check and would be reported as missing.
+            if ! git diff --name-only --diff-filter=ACMR "${base}...${GITHUB_SHA}" \
+                   -- '*.md' '*.markdown' > "${list}" 2>/dev/null; then
+              # Never silently check nothing. If the diff cannot be computed,
+              # widen the scope rather than narrowing it.
+              echo "::warning::Could not diff against ${base}; falling back to a full repository scan."
+              printf '%s\n' '**/*.md' '**/*.markdown' > "${list}"
+            fi
+          else
+            printf '%s\n' '**/*.md' '**/*.markdown' > "${list}"
+          fi
+
+          count=$(grep -c '[^[:space:]]' "${list}" || true)
+          echo "count=${count}" >> "${GITHUB_OUTPUT}"
+          echo "Inputs to check (${count}):"
+          cat "${list}"
+
+      - name: Restore link-check cache
+        if: steps.select.outputs.count != '0'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .lycheecache
+          # Keyed on content, not on the commit: an exact hit whenever the
+          # Markdown or the config is unchanged, and the prefix fallback keeps
+          # a warm cache across unrelated commits. (A per-SHA key would never
+          # hit except on a re-run of the same commit, and would grow one
+          # entry per push.)
+          key: lychee-${{ hashFiles('**/*.md', '**/*.markdown', 'lychee.toml') }}
+          restore-keys: |
+            lychee-
+
+      # Skipped when the PR touched no Markdown at all, so a documentation
+      # pipeline stays out of the way of code-only changes.
+      - name: Check links
+        if: steps.select.outputs.count != '0'
+        uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
+        with:
+          # The config path is passed explicitly so it is visible in the run
+          # log. lychee already defaults to ./lychee.toml, and a missing or
+          # invalid config exits 3 rather than 0, so `fail: true` turns a
+          # config typo into a red build instead of a silent default run.
+          args: >-
+            --config lychee.toml
+            --no-progress
+            --verbose
+            --files-from ${{ runner.temp }}/lychee-inputs.txt
+          # github.token works for fork PRs (no secrets access needed) and
+          # raises GitHub's API rate limit for github.com link checks. The
+          # action exports it as GITHUB_TOKEN for lychee, so no env: block is
+          # needed.
+          token: ${{ github.token }}
+          # Both are the action's defaults; stated explicitly to document intent.
+          fail: true
+          jobSummary: true

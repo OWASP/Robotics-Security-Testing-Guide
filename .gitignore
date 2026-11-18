@@ -1,0 +1,8 @@
+# lychee link-checker result cache (created locally and in CI)
+.lycheecache
+
+# lychee-action's default report directory (lychee/out.md), when run locally
+lychee/
+
+# Node tooling, if a contributor runs markdownlint-cli2 via npm
+node_modules/

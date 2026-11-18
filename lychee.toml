@@ -1,0 +1,61 @@
+# lychee link-checker configuration
+# Reference: https://lychee.cli.rs/#/configuration/
+
+# --- Flakiness control -------------------------------------------------------
+# Retry transient failures (429 rate limits, 5xx, connection resets) so a busy
+# remote host does not turn a healthy PR red.
+max_retries = 3
+retry_wait_time = 2
+# Parallel requests. Modest value keeps remote hosts from rate-limiting us.
+max_concurrency = 8
+# Per-request timeout in seconds.
+timeout = 20
+
+# --- What counts as OK ------------------------------------------------------
+# lychee's own default is 100..=103,200..=299. Keep that whole range (never
+# narrow it, or valid 201/204 responses start failing) and add 429: rate
+# limited is not broken, and treating it as a failure makes CI flaky.
+# A genuinely dead URL still returns 404/410 and fails the job.
+accept = ["200..=299", "429"]
+
+# --- Scope ------------------------------------------------------------------
+# The test-case template contains intentional placeholder links
+# (e.g. link_to_file.md) that never resolve. Lint it for style, not for links.
+# --exclude-path values are regular expressions, so anchor the segment
+# boundaries; a bare "template" would also match e.g. document/templates/.
+exclude_path = ["(^|/)template/"]
+
+# Never try to reach loopback or private ranges from CI.
+exclude_all_private = true
+
+# docs.ros.org is fronted by Anubis, a proof-of-work anti-bot wall. It answers
+# automated clients with a JavaScript challenge instead of the documentation,
+# so a link checker cannot distinguish "alive" from "blocked". Checking it
+# would either fail permanently or require spoofing a browser identity to get
+# past a control the site operator deliberately put there. The URLs are valid
+# (they serve real docs in a browser) but are excluded from automation;
+# re-check them by hand when ROS distro pages change.
+# Re-enable by deleting this block if docs.ros.org starts serving automated clients.
+exclude = [
+  # Anubis anti-bot wall (see above).
+  '^https://docs\.ros\.org/',
+  # Badge rendering service: returns intermittent 5xx to automated clients.
+  # A broken badge is immediately visible in the rendered README anyway, so
+  # checking it costs CI reliability and buys little.
+  '^https://img\.shields\.io/',
+]
+
+# Verify #fragment anchors. lychee's default is "none", which silently accepts
+# a link to a section that no longer exists — a real class of "dead reference"
+# for a guide whose table of contents links between chapters.
+# "anchor-only" checks the fragment without fetching every remote page body in
+# full. Verified: current content passes, and an injected broken anchor
+# (01-About.md#no-such-section) is caught.
+# Trade-off: if a contributor links to a #fragment on a third-party site, the
+# anchor is validated against that site's HTML, which can produce a false
+# positive on hosts that render anchors client-side (notably github.com).
+# If that ever bites, switch this back to "none".
+include_fragments = "anchor-only"
+
+# Cache results between runs to cut CI time and remote load.
+cache = true
