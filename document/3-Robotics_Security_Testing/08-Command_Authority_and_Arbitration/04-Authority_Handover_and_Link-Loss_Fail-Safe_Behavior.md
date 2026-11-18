@@ -8,32 +8,11 @@
 
 Many robots accept motion commands from several command sources, such as a navigation stack, an AI planner, a remote teleoperator, a teach pendant, and a fleet management system. An arbitration layer, such as a command multiplexer or a mode switch, decides which source is in control at any moment.
 
-Terms used in this test case:
+Terms such as *command source*, *transition*, *expected behavior*, *enabling control*, *liveness check*, and *downstream timeout* are defined in the [3.8.0 Overview](00-Overview.md).
 
-- A **command source** is any component that can send motion commands to the robot.
-- A **transition** is any change affecting the source in control: a planned handover from one source to another, or an unplanned event such as losing the link to the source in control, whether or not another source then takes over.
-- The **expected behavior** is what the target's specification says should happen at each transition.
-- An **enabling control** (also called a deadman control) is a control the operator must hold for motion to be allowed; releasing it should stop motion.
-- A **liveness check** detects that a source has stopped communicating, such as a timeout that triggers when no messages arrive.
-- A **downstream timeout** is a timeout in a component closer to the actuators than the arbiter, such as a motor controller, that stops the robot when commands stop arriving.
+Where arbitration sits, and the points (1)-(4) at which to collect evidence:
 
-Where arbitration sits, and the points ①-④ at which to collect evidence:
-
-```mermaid
-flowchart LR
-    subgraph S["Command sources"]
-        NAV["Navigation / AI planner"]
-        TEL["Remote teleoperator"]
-        PEN["Teach pendant / joystick"]
-    end
-    NAV -->|"① source commands"| ARB
-    TEL -->|"① source commands"| ARB
-    PEN -->|"① source commands"| ARB
-    ARB["Arbitration layer<br/>priorities, input timeouts, locks"] -->|"② arbiter output"| SAF["Software safeguards<br/>(optional)"]
-    SAF -->|"③ controller input"| CTL["Controller<br/>downstream timeout"]
-    CTL --> ACT["Actuators"]
-    ACT -->|"④ actual motion"| OBS(["Ground truth / joint states"])
-```
+![Command sources feed the arbitration layer, then optional software safeguards, the controller with its downstream timeout, and the actuators. Evidence points: (1) source commands, (2) arbiter output, (3) controller input, (4) actual motion.](images/cmda04-arbitration.png)
 
 This test evaluates what the robot does at each transition. At every transition, the robot should end up where the expected behavior says: under the control of the intended source, or in its safe state. It should never move under commands from a source that was not given control.
 
@@ -75,7 +54,7 @@ A common failure is implicit fallback. A priority-based arbiter forwards command
    | Local pendant (manual mode) | A remote source sends motion commands | Commands are ignored |
 
    Also define the target's **safe state** and **stopping requirement**. If the target has no expected behavior defined for a transition, record that as a weakness.
-2. **Collect evidence at each point, with timestamps on a common clock** (use simulation time where available): the commands each source sent (①), the arbiter's output (②), the final controller input (③), and actual motion (④) from simulator ground-truth pose, joint states, or odometry computed from feedback. Record the arbiter's status if it publishes one.
+2. **Collect evidence at each point, with timestamps on a common clock** (use simulation time where available): the commands each source sent (1), the arbiter's output (2), the final controller input (3), and actual motion (4) from simulator ground-truth pose, joint states, or odometry computed from feedback. Record the arbiter's status if it publishes one.
 
    ```bash
    ros2 bag record -o rstg_cmda04 /clock /<source_1_topic> /<source_2_topic> \

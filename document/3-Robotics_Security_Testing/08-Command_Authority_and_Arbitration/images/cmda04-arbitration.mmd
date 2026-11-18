@@ -1,0 +1,14 @@
+%%{init: {"theme": "neutral"}}%%
+flowchart LR
+    subgraph S["Command sources"]
+        NAV["Navigation / AI planner"]
+        TEL["Remote teleoperator"]
+        PEN["Teach pendant / joystick"]
+    end
+    NAV -->|"(1) source commands"| ARB
+    TEL -->|"(1) source commands"| ARB
+    PEN -->|"(1) source commands"| ARB
+    ARB["Arbitration layer<br/>priorities, input timeouts, locks"] -->|"(2) arbiter output"| SAF["Software safeguards<br/>(optional)"]
+    SAF -->|"(3) controller input"| CTL["Controller<br/>downstream timeout"]
+    CTL --> ACT["Actuators"]
+    ACT -->|"(4) actual motion"| OBS(["Ground truth / joint states"])
