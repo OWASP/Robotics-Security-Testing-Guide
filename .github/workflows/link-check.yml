@@ -92,6 +92,7 @@ jobs:
       # Skipped when the PR touched no Markdown at all, so a documentation
       # pipeline stays out of the way of code-only changes.
       - name: Check links
+        id: lychee
         if: steps.select.outputs.count != '0'
         uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
         with:
@@ -109,3 +110,14 @@ jobs:
           # fail the job. Keep the signal where it is meaningful.
           failIfEmpty: ${{ github.event_name != 'pull_request' }}
           jobSummary: true
+
+      # lychee-action writes its markdown report to lychee/out.md even when the
+      # check fails. Consumed by the PR Report workflow via workflow_run.
+      - name: Upload failure report
+        if: steps.lychee.outcome == 'failure'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ci-failure-report
+          path: lychee/out.md
+          if-no-files-found: warn
+          retention-days: 7
