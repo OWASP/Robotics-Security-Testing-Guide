@@ -60,6 +60,7 @@ A common failure is implicit fallback. A priority-based arbiter forwards command
    ros2 bag record -o rstg_cmda04 /clock /<source_1_topic> /<source_2_topic> \
      /<arbiter_output_topic> /<controller_input_topic> /joint_states /odom /diagnostics
    ```
+
 3. **Classify results:**
 
    | Observation | Classification |
@@ -74,12 +75,14 @@ A common failure is implicit fallback. A priority-based arbiter forwards command
 ### Black-Box / Passive Analysis:
 
 - Identify the command sources and the arbitration layer between them:
+
   ```bash
   ros2 node list
   ros2 topic info /<controller_input_topic> --verbose
   ros2 node info /<arbiter_node>
   ros2 param dump /<arbiter_node>
   ```
+
 - In the operator interfaces, check whether the source currently in control is shown, and whether takeover and handback are explicit actions.
 
 ### Gray-Box / Active Exploitation:
@@ -89,22 +92,26 @@ Run each test first with motion disabled or in simulation, recording the evidenc
 1. **Link loss while another source is active:** with the autonomy source sending commands, take control as the operator and drive. Then interrupt the operator link while moving, in each of the ways it can fail in deployment:
    - stop the operator's process or node;
    - drop network traffic from the operator station:
+
      ```bash
      # On the operator station, with administrator privileges. Use only if
      # `tc qdisc show dev <operator_iface>` shows the default configuration.
      # Drops outgoing traffic for 10 s, then removes the rule.
      tc qdisc add dev <operator_iface> root netem loss 100% && { sleep 10; tc qdisc del dev <operator_iface> root; }
      ```
+
      This drops all outgoing traffic on that interface; do not run it over a remote session that uses the same interface.
    - disconnect the input device, such as unplugging the joystick or turning off the wireless pendant.
 
    Compare what follows with the expected behavior. Example annotated trace of the arbiter's output with a 0.5 s input timeout. It violates an expected behavior that requires stop-and-hold until explicit handback. Times are illustrative; actual timing depends on publication rate and scheduling.
+
    ```text
    before loss   teleop commands selected       linear.x=0.80
    t=0           last teleop command observed
    t≈timeout     navigation commands selected   linear.x=0.30
                  no explicit handback occurred
    ```
+
    The trace shows navigation commands resuming at the arbiter output. Confirm at the controller input and in actual motion whether the robot moved.
 2. **Link loss with no other source active:** repeat with only the operator source sending commands. Measure the time from the last operator command received to the safe state, and record which layer stopped the robot. If the arbiter forwards nothing after link loss, a downstream command timeout must stop the robot; verify that it is enabled.
 3. **Enabling controls:** release the enabling control while moving. Verify that the robot stops, and that no other source takes control while the enabling control is released, unless the expected behavior allows it. Then check whether the enabling requirement is a runtime setting, such as a ROS parameter, and which identities can change it.
@@ -142,6 +149,7 @@ twist_mux:
     locks:
       pause:      {topic: pause_navigation, timeout: 0.0, priority: 100}
 ```
+
 With this configuration, when joystick input stops for longer than 0.5 s, navigation commands are forwarded again without an explicit handback, provided the `pause` lock is not engaged (an engaged priority-100 lock blocks the priority-10 navigation input). The `pause` lock has no liveness check (`timeout: 0.0`), so it keeps its last value if its publisher stops.
 
 ## Remediation
