@@ -96,7 +96,8 @@ jobs:
             --workflow "${WORKFLOW_NAME}" \
             --run-url "${RUN_URL}" \
             --sha "${HEAD_SHA}" \
-            --out "${RUNNER_TEMP}/comment.md"
+            --out "${RUNNER_TEMP}/comment.md" \
+            --marker-out "${RUNNER_TEMP}/marker.txt"
 
       - name: Resolve pull request
         id: pr
@@ -137,24 +138,49 @@ jobs:
           REPO: ${{ github.repository }}
           PR: ${{ steps.pr.outputs.number }}
           BODY_FILE: ${{ runner.temp }}/comment.md
+          MARKER_FILE: ${{ runner.temp }}/marker.txt
         run: |
           set -euo pipefail
 
-          # One comment per PR, updated in place, so repeated failures do not
-          # bury the discussion under a wall of bot messages.
+          # The marker is produced by the same script that wrote the body, so
+          # the string searched for here is byte-identical to the first line of
+          # the comment. Re-deriving the slug in shell would be a second source
+          # of truth, and a drift between the two silently disables in-place
+          # updates — the worst failure mode, because it looks like success.
+          marker="$(cat "${MARKER_FILE}" 2>/dev/null || true)"
+          if [ -z "${marker}" ]; then
+            echo "::warning::No comment marker was produced; posting a new comment."
+          fi
+
+          # One comment per workflow per PR, updated in place, so repeated
+          # failures do not bury the discussion under a wall of bot messages —
+          # and so Markdown Lint and Link Check, when they fail together, each
+          # keep their own report instead of the second overwriting the first.
           #
           # `--slurp` collects every page into one array, so the whole lookup is
-          # a single command with no pipe. Piping paginated output into `head`
-          # would raise SIGPIPE (exit 141) under `set -o pipefail` as soon as
-          # there were several comments. `add // []` keeps an empty page list
-          # from turning into `null` and erroring inside `map`.
+          # a single command with no pipe into `head`. Piping paginated output
+          # into `head` would raise SIGPIPE (exit 141) under `set -o pipefail`
+          # as soon as there were several comments. `add // []` flattens the
+          # per-page arrays and keeps an empty page list from turning into
+          # `null` and erroring inside `map`.
+          #
           # Match on author as well as marker. Anyone can comment on a public PR,
           # and the marker is visible in this file: without the author check a
           # stranger's comment would be selected and the PATCH refused, which
           # would silently disable the report on that PR for good.
+          #
+          # The marker is compared against the FIRST LINE of the body, not with
+          # `startswith`: one scoped marker is a prefix of a longer one
+          # (`...:markdown-lint` vs `...:markdown-lint-old`), so a prefix test
+          # could select the wrong comment. `--arg` keeps the marker out of the
+          # jq program text, so it is never parsed as jq syntax.
           existing=$(gh api --paginate --slurp \
             "repos/${REPO}/issues/${PR}/comments?per_page=100" \
-            --jq 'add // [] | map(select(.user.login == "github-actions[bot]") | select((.body // "") | startswith("<!-- rstg-ci-report -->"))) | .[0].id // empty')
+            | jq -r --arg marker "${marker}" '
+                add // []
+                | map(select(.user.login == "github-actions[bot]")
+                      | select(((.body // "") | split("\n")[0]) == $marker))
+                | .[0].id // empty')
 
           # Build the JSON payload with jq so the body never passes through a
           # shell string, and characters in it cannot be re-interpreted.

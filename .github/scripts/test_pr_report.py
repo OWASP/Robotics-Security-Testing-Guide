@@ -240,10 +240,90 @@ class TruncationTests(unittest.TestCase):
         self.assertEqual(self._fences(body), [])
 
 
+class MarkerTests(unittest.TestCase):
+    """The marker is scoped per workflow so two failures cannot collide."""
+
+    def test_marker_names_the_workflow(self):
+        self.assertEqual(
+            R.marker_for("Markdown Lint"), "<!-- rstg-ci-report:markdown-lint -->"
+        )
+        self.assertEqual(R.marker_for("Link Check"), "<!-- rstg-ci-report:link-check -->")
+
+    def test_two_workflows_get_different_markers(self):
+        # This is the whole point: the second report must not overwrite the first.
+        self.assertNotEqual(R.marker_for("Markdown Lint"), R.marker_for("Link Check"))
+
+    def test_body_starts_with_its_own_scoped_marker(self):
+        for name in ("Markdown Lint", "Link Check"):
+            body = R.build_body(name, "", "", [])
+            self.assertEqual(body.split("\n")[0], R.marker_for(name))
+
+    def test_explicit_marker_overrides_the_derived_one(self):
+        body = R.build_body("Link Check", "", "", [], marker="<!-- custom -->")
+        self.assertEqual(body.split("\n")[0], "<!-- custom -->")
+
+    def test_hostile_workflow_name_cannot_forge_a_second_marker(self):
+        """A pull request can add a workflow with any name it likes.
+
+        The slug must stay a single-line, valid HTML comment built only from
+        ``[a-z0-9-]``: anything else would let the name close the comment early
+        or imitate another workflow's marker.
+        """
+        for hostile in (
+            "Markdown Lint -->\n<!-- rstg-ci-report:link-check",
+            "@evil",
+            "<script>",
+            "a`b",
+            "x--y",
+            "",
+            "   ",
+            "Ünïcödé",
+        ):
+            marker = R.marker_for(hostile)
+            self.assertNotIn("\n", marker)
+            self.assertRegex(
+                marker, r"^<!-- rstg-ci-report:[a-z0-9]+(-[a-z0-9]+)* -->$", msg=hostile
+            )
+
+    def test_empty_or_unsafe_name_falls_back_to_ci(self):
+        self.assertEqual(R.marker_for(""), "<!-- rstg-ci-report:ci -->")
+        self.assertEqual(R.marker_for("!!!"), "<!-- rstg-ci-report:ci -->")
+
+    def test_slug_is_bounded(self):
+        self.assertLessEqual(len(R.marker_slug("x" * 500)), R.MAX_SLUG)
+
+    def test_marker_out_is_identical_to_the_body_first_line(self):
+        """--marker-out is what the workflow greps for, so it must not drift."""
+        with tempfile.TemporaryDirectory() as d:
+            body_path = Path(d) / "comment.md"
+            marker_path = Path(d) / "marker.txt"
+            R.main(
+                [
+                    "--workflow",
+                    "Link Check",
+                    "--out",
+                    str(body_path),
+                    "--marker-out",
+                    str(marker_path),
+                ]
+            )
+            marker = marker_path.read_text(encoding="utf-8")
+            self.assertEqual(marker, R.marker_for("Link Check"))
+            self.assertEqual(
+                body_path.read_text(encoding="utf-8").split("\n")[0], marker
+            )
+
+    def test_marker_out_is_optional(self):
+        with tempfile.TemporaryDirectory() as d:
+            body_path = Path(d) / "comment.md"
+            self.assertEqual(R.main(["--workflow", "Link Check", "--out", str(body_path)]), 0)
+            self.assertTrue(body_path.is_file())
+
+
 class BodyTests(unittest.TestCase):
     def test_marker_is_present_so_the_comment_can_be_updated(self):
         body = R.build_body("Link Check", "", "", [])
-        self.assertTrue(body.startswith(R.MARKER))
+        self.assertTrue(body.startswith(R.MARKER_PREFIX))
 
     def test_no_reports_says_so_instead_of_failing(self):
         body = R.build_body("Link Check", "", "", [])

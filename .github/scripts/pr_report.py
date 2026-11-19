@@ -13,7 +13,9 @@ untrusted text:
 * file names, the workflow name and the run URL are validated and sanitised
   before they are placed in Markdown, so a crafted name cannot inject a heading
   or an ``@mention``;
-* the body is truncated well below GitHub's comment size limit.
+* the body is truncated well below GitHub's comment size limit;
+* the comment marker is scoped per workflow, so two failing checks each own
+  their own comment instead of overwriting one another.
 
 Standard library only: no dependencies to install on the runner.
 """
@@ -29,7 +31,23 @@ from pathlib import Path, PurePosixPath
 
 # Hidden marker used to find and update our own comment instead of posting a
 # new one on every failure.
-MARKER = "<!-- rstg-ci-report -->"
+#
+# The marker is scoped per workflow. Both lint workflows can fail on the same
+# commit, and with one shared marker the second report overwrites the first:
+# the reader sees "Link Check failed" and never learns that markdownlint also
+# failed. Scoping it means each workflow owns exactly one comment and can only
+# ever update that one.
+#
+# The scope is a slug, never the raw workflow name. The name arrives in the
+# event payload and a pull request can add a workflow whose name is arbitrary
+# text, so the name is reduced to `[a-z0-9-]` with collapsed hyphen runs. That
+# keeps the marker a single line, a syntactically valid HTML comment, and free
+# of `--` in its body so it cannot be closed early.
+MARKER_PREFIX = "<!-- rstg-ci-report"
+MARKER_SUFFIX = "-->"
+
+# Upper bound on the slug. Workflow names are short; this only bounds abuse.
+MAX_SLUG = 40
 
 # GitHub's hard limit is 65536 characters; stay comfortably below it.
 MAX_BODY = 60000
@@ -62,6 +80,25 @@ def sanitize_label(value: str, fallback: str = "CI") -> str:
         return value
     cleaned = re.sub(r"[^A-Za-z0-9 ./_-]", "", value)[:60].strip()
     return cleaned or fallback
+
+
+def marker_slug(workflow: str) -> str:
+    """Reduce a workflow name to a stable ``[a-z0-9-]`` slug for the marker."""
+    label = sanitize_label(workflow, fallback="CI")
+    slug = re.sub(r"[^a-z0-9]+", "-", label.lower())
+    slug = re.sub(r"-{2,}", "-", slug).strip("-")[:MAX_SLUG].strip("-")
+    return slug or "ci"
+
+
+def marker_for(workflow: str) -> str:
+    """Return the per-workflow marker, e.g. ``<!-- rstg-ci-report:markdown-lint -->``.
+
+    The workflow that searches for this comment compares it against the first
+    line of a comment body, so the marker must stay byte-identical between the
+    run that wrote the body and the run that looks it up. ``--marker-out``
+    exists to guarantee exactly that.
+    """
+    return f"{MARKER_PREFIX}:{marker_slug(workflow)} {MARKER_SUFFIX}"
 
 
 # Artifact member names are chosen by whoever produced the artifact, so they are
@@ -176,6 +213,7 @@ def build_body(
     run_url: str,
     sha: str,
     reports: list[tuple[str, str]],
+    marker: str = "",
 ) -> str:
     """Assemble the full comment body.
 
@@ -186,8 +224,9 @@ def build_body(
     label = sanitize_label(workflow)
     url = sanitize_url(run_url)
     short_sha = sanitize_sha(sha)[:7]
+    marker = marker or marker_for(workflow)
 
-    head: list[str] = [MARKER, "## CI failure report", ""]
+    head: list[str] = [marker, "## CI failure report", ""]
     summary = f"**{label}** failed"
     if short_sha:
         summary += f" on `{short_sha}`"
@@ -244,13 +283,28 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--run-url", default="", help="URL of the failing run")
     parser.add_argument("--sha", default="", help="Head commit SHA of the failing run")
     parser.add_argument("--out", required=True, help="Where to write the comment body")
+    parser.add_argument(
+        "--marker-out",
+        default="",
+        help="Optional path to write the marker the comment body starts with",
+    )
     args = parser.parse_args(argv)
 
     reports = read_reports(args.reports_dir) if args.reports_dir else []
-    body = build_body(args.workflow, args.run_url, args.sha, reports)
+    marker = marker_for(args.workflow)
+    body = build_body(args.workflow, args.run_url, args.sha, reports, marker=marker)
 
     Path(args.out).write_text(body, encoding="utf-8")
-    print(f"wrote {len(body)} chars from {len(reports)} report file(s) to {args.out}")
+    if args.marker_out:
+        # Written from the same computation that produced the body, so the step
+        # that searches for the comment cannot drift from the step that built
+        # it. Duplicating the slug rules in shell would be a second source of
+        # truth, and a drift there silently disables in-place updates.
+        Path(args.marker_out).write_text(marker, encoding="utf-8")
+    print(
+        f"wrote {len(body)} chars from {len(reports)} report file(s) to {args.out}"
+        f" (marker: {marker})"
+    )
     return 0
 
 
