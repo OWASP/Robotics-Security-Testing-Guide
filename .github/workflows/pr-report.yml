@@ -1,0 +1,200 @@
+# Posts CI failure details as a pull-request comment.
+#
+# Why a second workflow at all: a `pull_request` run triggered from a fork gets a
+# read-only token, so it cannot comment. Commenting needs write access, which can
+# only be had in a run whose workflow file comes from this repository's default
+# branch. `workflow_run` provides exactly that — and it is the *only* reason this
+# file exists. Do not replace it with `pull_request_target`.
+#
+# Security model, in order of importance:
+#
+#   1. This workflow never checks out or executes pull-request code. It checks
+#      out the default branch, so the script it runs is the reviewed one.
+#   2. The failure report came from a run of PR code and is therefore
+#      attacker-controlled. It is downloaded as a zip and never extracted: the
+#      script reads entries in memory with byte and entry-count caps, so no
+#      extraction step can be tricked into writing files outside the workspace.
+#      The text is fenced, length-capped and never interpreted.
+#   3. Everything placed in the comment outside a code fence is validated first
+#      (see .github/scripts/pr_report.py), so a crafted file name or workflow
+#      name cannot inject a heading or an @mention.
+#   4. Permissions are the minimum needed to read the artifact and write one
+#      comment.
+#
+# Note on the `workflows:` filter below: it matches workflow *names*, and a pull
+# request can add a new workflow file with the same name, so the filter is not an
+# identity check. A contributor can therefore trigger this workflow on demand
+# with an artifact of their choosing. That is acceptable only because the
+# artifact is treated as inert hostile data throughout — never as a reason to
+# trust anything.
+name: PR Report
+
+on:
+  workflow_run:
+    # Only the workflows whose failures we want to explain.
+    workflows: ["Markdown Lint", "Link Check"]
+    types: [completed]
+
+permissions:
+  contents: read
+  # Required to create and update the comment.
+  pull-requests: write
+  # Required to download the artifact from the triggering run.
+  actions: read
+
+concurrency:
+  # Keyed on the pull request, not the run: when both lint workflows fail at the
+  # same time, serialising them here is what stops two comments being created.
+  group: pr-report-${{ github.event.workflow_run.pull_requests[0].number || github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+jobs:
+  comment:
+    # Only pull requests, and only failures. Without this guard the job would
+    # also fire for pushes to main, where there is no PR to comment on.
+    if: >-
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'failure'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout default branch
+        # Trusted code only. `persist-credentials: false` keeps the write token
+        # out of the git configuration, where a later step could reach it.
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download failure report
+        id: download
+        # A missing artifact is normal (for example when the failure happened
+        # before the report was written), so do not fail the job over it.
+        continue-on-error: true
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ci-failure-report
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/ci-report
+          # The archive came from a run of pull-request code. Leave it zipped and
+          # let the script read entries in memory, so no third-party extraction
+          # step ever writes attacker-controlled files onto the runner.
+          skip-decompress: true
+
+      - name: Build comment body
+        env:
+          WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          REPORT_DIR: ${{ runner.temp }}/ci-report
+        run: |
+          set -euo pipefail
+          # Values are passed through the environment and validated inside the
+          # script; none of them is spliced into the shell command itself.
+          python3 .github/scripts/pr_report.py \
+            --reports-dir "${REPORT_DIR}" \
+            --workflow "${WORKFLOW_NAME}" \
+            --run-url "${RUN_URL}" \
+            --sha "${HEAD_SHA}" \
+            --out "${RUNNER_TEMP}/comment.md" \
+            --marker-out "${RUNNER_TEMP}/marker.txt"
+
+      - name: Resolve pull request
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          EVENT_PR: ${{ github.event.workflow_run.pull_requests[0].number }}
+        run: |
+          set -euo pipefail
+          number="${EVENT_PR:-}"
+          if [ -z "${number}" ]; then
+            # The event payload omits pull_requests[] for fork runs, so look the
+            # commit up instead. Require exactly one match that is open, targets
+            # this repository and has this commit as its head, so the comment
+            # cannot land on an unrelated PR. API errors are tolerated: a hiccup
+            # here must not fail the job.
+            number=$(gh api "repos/${REPO}/commits/${HEAD_SHA}/pulls" \
+              --jq "[.[] | select(.state == \"open\")
+                        | select(.base.repo.full_name == \"${REPO}\")
+                        | select(.head.sha == \"${HEAD_SHA}\")]
+                    | if length == 1 then .[0].number else empty end" \
+              2>/dev/null || true)
+          fi
+          if [ -z "${number}" ]; then
+            echo "No open pull request for ${HEAD_SHA}; skipping comment."
+          else
+            echo "number=${number}" >> "${GITHUB_OUTPUT}"
+          fi
+
+      # Gated on the download too: the comment is updated in place, so posting
+      # "no artifact was available" over a previous, useful report would destroy
+      # it. Better to leave the last good report alone.
+      - name: Post or update comment
+        if: steps.pr.outputs.number != '' && steps.download.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ steps.pr.outputs.number }}
+          BODY_FILE: ${{ runner.temp }}/comment.md
+          MARKER_FILE: ${{ runner.temp }}/marker.txt
+        run: |
+          set -euo pipefail
+
+          # The marker is produced by the same script that wrote the body, so
+          # the string searched for here is byte-identical to the first line of
+          # the comment. Re-deriving the slug in shell would be a second source
+          # of truth, and a drift between the two silently disables in-place
+          # updates — the worst failure mode, because it looks like success.
+          marker="$(cat "${MARKER_FILE}" 2>/dev/null || true)"
+          if [ -z "${marker}" ]; then
+            echo "::warning::No comment marker was produced; posting a new comment."
+          fi
+
+          # One comment per workflow per PR, updated in place, so repeated
+          # failures do not bury the discussion under a wall of bot messages —
+          # and so Markdown Lint and Link Check, when they fail together, each
+          # keep their own report instead of the second overwriting the first.
+          #
+          # `--slurp` collects every page into one array, so the whole lookup is
+          # a single command with no pipe into `head`. Piping paginated output
+          # into `head` would raise SIGPIPE (exit 141) under `set -o pipefail`
+          # as soon as there were several comments. `add // []` flattens the
+          # per-page arrays and keeps an empty page list from turning into
+          # `null` and erroring inside `map`.
+          #
+          # Match on author as well as marker. Anyone can comment on a public PR,
+          # and the marker is visible in this file: without the author check a
+          # stranger's comment would be selected and the PATCH refused, which
+          # would silently disable the report on that PR for good.
+          #
+          # The marker is compared against the FIRST LINE of the body, not with
+          # `startswith`: one scoped marker is a prefix of a longer one
+          # (`...:markdown-lint` vs `...:markdown-lint-old`), so a prefix test
+          # could select the wrong comment. `--arg` keeps the marker out of the
+          # jq program text, so it is never parsed as jq syntax.
+          existing=$(gh api --paginate --slurp \
+            "repos/${REPO}/issues/${PR}/comments?per_page=100" \
+            | jq -r --arg marker "${marker}" '
+                add // []
+                | map(select(.user.login == "github-actions[bot]")
+                      | select(((.body // "") | split("\n")[0]) == $marker))
+                | .[0].id // empty')
+
+          # Build the JSON payload with jq so the body never passes through a
+          # shell string, and characters in it cannot be re-interpreted.
+          payload="${RUNNER_TEMP}/comment.json"
+          jq -Rs '{body: .}' < "${BODY_FILE}" > "${payload}"
+
+          # If the update is refused for any reason, fall back to posting a new
+          # comment rather than failing the job and losing the report.
+          if [ -n "${existing}" ] && gh api -X PATCH \
+               "repos/${REPO}/issues/comments/${existing}" \
+               --input "${payload}" > /dev/null 2>&1; then
+            echo "Updated comment ${existing}."
+          else
+            gh api -X POST "repos/${REPO}/issues/${PR}/comments" \
+              --input "${payload}" > /dev/null
+            echo "Created a new comment on #${PR}."
+          fi

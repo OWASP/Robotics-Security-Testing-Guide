@@ -6,3 +6,7 @@ lychee/
 
 # Node tooling, if a contributor runs markdownlint-cli2 via npm
 node_modules/
+
+# Python bytecode, from running the CI helper scripts' tests locally
+__pycache__/
+*.pyc

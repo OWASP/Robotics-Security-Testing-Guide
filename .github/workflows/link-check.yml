@@ -59,13 +59,30 @@ jobs:
 
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             base="${{ github.event.pull_request.base.sha }}"
+            # Diff the PR HEAD, not GITHUB_SHA. On a pull_request event
+            # GITHUB_SHA is the *merge* commit, and `base` is the base tip as it
+            # was when the PR was opened. Diffing those two reports every file
+            # the base branch gained in the meantime, so a PR that touches no
+            # Markdown ends up checking unrelated content that landed after it
+            # was opened.
+            #
+            # That is not hypothetical: 9a54924 added a chapter to main with a
+            # broken relative link, and every open PR immediately started
+            # failing this job without having touched that chapter. Rot on the
+            # base branch is still caught, by the push and schedule runs there,
+            # which scan the whole repository.
+            #
+            # `A...B` is merge-base(A, B)..B, so this is exactly the set of
+            # files the PR itself changes.
+            head="${{ github.event.pull_request.head.sha }}"
+            [ -n "${head}" ] || head="${GITHUB_SHA}"
             # Only added/copied/modified/renamed files: a deleted file has no
             # links left to check and would be reported as missing.
-            if ! git diff --name-only --diff-filter=ACMR "${base}...${GITHUB_SHA}" \
+            if ! git diff --name-only --diff-filter=ACMR "${base}...${head}" \
                    -- '*.md' '*.markdown' > "${list}" 2>/dev/null; then
               # Never silently check nothing. If the diff cannot be computed,
               # widen the scope rather than narrowing it.
-              echo "::warning::Could not diff against ${base}; falling back to a full repository scan."
+              echo "::warning::Could not diff ${base}...${head}; falling back to a full repository scan."
               printf '%s\n' '**/*.md' '**/*.markdown' > "${list}"
             fi
           else
@@ -92,6 +109,7 @@ jobs:
       # Skipped when the PR touched no Markdown at all, so a documentation
       # pipeline stays out of the way of code-only changes.
       - name: Check links
+        id: lychee
         if: steps.select.outputs.count != '0'
         uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
         with:
@@ -109,3 +127,19 @@ jobs:
           # fail the job. Keep the signal where it is meaningful.
           failIfEmpty: ${{ github.event_name != 'pull_request' }}
           jobSummary: true
+
+      # lychee-action writes its markdown report to lychee/out.md even when the
+      # check fails. Consumed by the PR Report workflow via workflow_run.
+      - name: Upload failure report
+        # `failure()` is load-bearing, not decoration. An `if:` that names no
+        # status function still has `success()` ANDed in, so without it this
+        # step is skipped in exactly the situation it exists for — when lychee
+        # has just failed. Verified on run 44548355119: "Check links" failed and
+        # this step was skipped, so no artifact existed for PR Report to read.
+        if: failure() && steps.lychee.outcome == 'failure'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ci-failure-report
+          path: lychee/out.md
+          if-no-files-found: warn
+          retention-days: 7
