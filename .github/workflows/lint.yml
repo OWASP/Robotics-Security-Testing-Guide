@@ -60,7 +60,10 @@ jobs:
       # the same pinned CLI version is re-run to capture the text for the pull
       # request comment. Only runs when linting actually failed.
       - name: Capture lint output
-        if: steps.lint.outcome == 'failure'
+        # `failure()` is required. An `if:` naming no status function still has
+        # `success()` ANDed in, so this step would be skipped precisely when
+        # linting failed — and then there would be nothing to upload.
+        if: failure() && steps.lint.outcome == 'failure'
         run: |
           set -euo pipefail
           npx --yes markdownlint-cli2@0.24.0 "**/*.{md,markdown}" \
@@ -69,7 +72,7 @@ jobs:
       # Consumed by the PR Report workflow via workflow_run. Nothing here is
       # trusted downstream: the report is attacker-influenced text.
       - name: Upload failure report
-        if: steps.lint.outcome == 'failure'
+        if: failure() && steps.lint.outcome == 'failure'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ci-failure-report
